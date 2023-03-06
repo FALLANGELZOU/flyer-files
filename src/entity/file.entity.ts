@@ -11,7 +11,7 @@ export class File {
    @Column()
    contentType: string  //  文件类型
 
-   @Column()
+   @Column({ nullable: true })
    md5: string  //  文件MD5
    
    @Column()

@@ -8,27 +8,4 @@ export class ApiService {
     ) {
 
     }
-
-
-    /**
-     * 上传文件
-     */
-    async upload() {
-
-    }
-
-
-    /**
-     * 下载文件
-     */
-    async download() {
-
-    }
-
-    /**
-     * 获得下载链接
-     */
-    async getDownloadPath() {
-
-    }
 }

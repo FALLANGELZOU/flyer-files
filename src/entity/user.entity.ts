@@ -1,4 +1,5 @@
 import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, UpdateDateColumn } from "typeorm"
+import { ROLE } from "./role.entity"
 
 @Entity()
 export class User {
@@ -11,8 +12,8 @@ export class User {
    @Column()
    password: string
 
-   @Column()
-   role: string
+   @Column({ nullable: true })
+   role: ROLE
 
    @CreateDateColumn()
    createTime : String
