@@ -228,8 +228,7 @@ export class DbService {
             }
 
             tmp.push(saveImage())
-            //  我不理解，为什么不加==，会导致thumb为false的时候也执行
-            if (option.thumb == true) {
+            if (option.thumb && physicalImageInfo.supportThumb()) {
                 tmp.push(saveThumbImage())
             }
             const res = await Promise.all<File>(tmp)
@@ -256,11 +255,34 @@ export class DbService {
         }
     }
 
+    async getImageStream(path: string) {
+        const file = await this.fileRepository.findOneBy({ filePath: path })
+
+        if (!file) throw new BadRequestException("文件不存在！")
+        return fs.createReadStream(join(this.BASIC_DIR, path))
+        
+    }
+
     /**
      * 分页查询
      */
-    async getImages() {
+    async getImages(option: PageQueryDto): Promise<ImageDto[]> {
+        option.pageIndex = option.pageIndex ? option.pageIndex : 0
+        option.pageSize = option.pageSize ? option.pageSize : 20
+        option.reverse = option.reverse ? option.reverse : false
+        option.sortBy = option.sortBy ? option.sortBy : "createTime"
+        let orderType: "ASC" | "DESC" = "ASC"
+        if (option.reverse) orderType = "DESC"
 
+        const res = await this.imageRepository.find({
+            order: {
+                createTime: orderType
+            },
+            skip: option.pageSize * option.pageIndex,
+            take: option.pageSize,
+            relations: ["file", "thumbFile"]
+        })
+        return res.map(item => this.Image2ImageDto(item))
     }
 
 
@@ -353,7 +375,8 @@ export class DbService {
             file: fileDto,
             thumbPath: thumb,
             width: image.width,
-            height: image.height
+            height: image.height,
+            createTime: image.createTime
         }
     }
       

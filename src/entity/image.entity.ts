@@ -21,8 +21,8 @@ export class Image {
     height: number; //  原图高
     
     @CreateDateColumn()
-    createTime: String  //  文件创建时间
+    createTime: Date  //  文件创建时间
 
     @UpdateDateColumn()
-    updateTime: String  //  文件变更时间
+    updateTime: Date  //  文件变更时间
 }

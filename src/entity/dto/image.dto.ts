@@ -9,5 +9,6 @@ export interface ImageDto {
     file: FileDto
     thumbPath?: string  
     width: number
-    height: number
+    height: number,
+    createTime?: Date
 }

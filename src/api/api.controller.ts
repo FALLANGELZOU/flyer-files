@@ -13,6 +13,7 @@ import { UserDto } from 'src/entity/dto/user.dto';
 import { AuthService } from 'src/auth/auth.service';
 import { file2FileDto } from 'src/entity/dto/file.dto';
 import { type } from 'os';
+import { BoolUtil } from 'src/utils/commonUtil';
 @Controller('api')
 export class ApiController {
 
@@ -59,6 +60,7 @@ export class ApiController {
      * @param res 文件流
      */
     @Get("/file/:year/:month/:day/:name")
+    @UseGuards(JwtGuard)
     async getFile(@Param() params, @Res() res: Response) {
         const { year, month, day, name } = params
         const path = [year, month, day, name].join("/")
@@ -78,12 +80,30 @@ export class ApiController {
     @UseInterceptors(FileInterceptor('file'))
     async imageUpload(
         @UploadedFile() file: Express.Multer.File,
-        @Query("md5") md5: boolean = true,
-        @Query("thumb") thumb: boolean = true
+        @Query() option: SaveImageOption = {
+            md5: true,
+            thumb: true
+        },
     ) {
+        option.md5 = BoolUtil.isTrue(option.md5)
+        option.thumb = BoolUtil.isTrue(option.thumb)
         return this.dbService.saveImage(file2FileDto(file), {
-            md5,
-            thumb
+            ...option
         })
+    }
+
+    @Get("/images/:type/:year/:month/:day/:name")
+    async getImage(@Param() params, @Res() res: Response) {
+        const { type, year, month, day, name } = params
+        const path = [type, year, month, day, name].join("/")
+        const stream = await this.dbService.getImageStream(path)
+        stream.pipe(res)
+    }
+
+    @Post("/image/list")
+    async getImageList(@Body() param: PageQueryDto) {
+        console.log(param);
+        
+        return this.dbService.getImages(param)
     }
 }
