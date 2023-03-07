@@ -14,13 +14,71 @@ import { Exception } from 'sass';
 import sizeOf from "image-size"
 import { Image } from 'src/entity/image.entity';
 import * as gm from 'gm'
-import { SaveImageOption } from 'src/entity/dto/image.dto';
+import { ImageDto, SaveImageOption } from 'src/entity/dto/image.dto';
 import { ROLE } from 'src/entity/role.entity';
+
+/**
+ * 物理文件描述
+ */
+class physicalFileDto {
+    dayDir: string; //  抽象时间路径
+    originalName: string;
+    contentType: string;
+
+    uniqueFileName: string;
+    thumbFileName: string;
+
+    path: string;   //  数据库存储的路径
+    thumbPath: string;
+    phyiscalPath: string;   //  完整的物理路径
+    physicalThumbPath: string;
+
+    dir: string;    //  文件存储目录
+    thumbDir: string;
+
+    private BASIC_DIR = join(process.cwd(), "resource")
+    private imageType = [
+        "jpg", "jpeg", "png", "svg", "webp", "gif", "raw", "dmg", "bmp", "psd"
+    ]
+
+    private supportThumbType = [
+        "jpg", "jpeg", "png", "webp"
+    ]
+
+    constructor(file: FileDto) {
+        this.contentType = file.contentType;
+        this.originalName = file.fileName;
+        this.dayDir = moment().format('yyyy/MM/DD')
+
+        this.uniqueFileName = `${file.fileName}_${this.randomStr()}.${file.contentType}`
+        this.path = join("upload", this.dayDir, this.uniqueFileName)
+        this.phyiscalPath = join(this.BASIC_DIR, this.path)
+        this.dir = join(this.BASIC_DIR, "upload", this.dayDir)
+
+        if (this.supportThumb()) {
+            this.thumbFileName = `thumb_${this.uniqueFileName}`
+            this.thumbPath = join("thumb", this.dayDir, this.thumbFileName)
+            this.physicalThumbPath = join(this.BASIC_DIR, this.thumbPath)
+            this.thumbDir = join(this.BASIC_DIR, "thumb", this.dayDir)
+        }
+    }
+
+    isImage() {
+        return this.imageType.indexOf(this.contentType) != -1
+    }
+
+    supportThumb() {
+        return this.supportThumbType.indexOf(this.contentType) != -1
+    }
+
+    private randomStr(num: number = 8): string {
+        return Math.random().toString(36).slice(-num)
+    }
+}
 
 @Injectable()
 export class DbService {
-    private BASIC_DIR = join(process.cwd(), "resource/upload")
-    private THUMB_DIR = join(process.cwd(), "resource/thum")
+    private BASIC_DIR = join(process.cwd(), "resource")
     private logger = new Logger("DbService")
 
     constructor(
@@ -30,9 +88,6 @@ export class DbService {
     ) {
         if (!fs.existsSync(this.BASIC_DIR)) {
             fs.mkdirSync(this.BASIC_DIR, { recursive: true })
-        }
-        if (!fs.existsSync(this.THUMB_DIR)) {
-            fs.mkdirSync(this.THUMB_DIR, { recursive: true })
         }
     }
 
@@ -63,63 +118,44 @@ export class DbService {
 
     /**
      * 存储文件
-     * @param file 文件信息
-     * @param isThumb 是否是存储的缩略图
-     * @param needMd5 是否需要md5值
-     * @returns 数据库写入文件信息
+     * @param file 文件
+     * @param path 存储路径
      */
-    async saveFile(file: FileDto, isThumb: boolean = false, needMd5: boolean = false): Promise<File> {
-        if (file.buffer) {
-            let dir = this.BASIC_DIR
-            let prefix = ""
-            if (isThumb) {
-                dir = this.THUMB_DIR
-                prefix = "thumb_"
-            }
+    async save(file: FileDto, path: string, uniqueFileName: string): Promise<boolean> {
+        try {
             return new Promise((resolve, reject) => {
-                const day = moment().format('yyyy/MM/DD')
-                const uniqueName = `${prefix}${file.fileName}_${this.randomStr()}.${file.contentType}`
-                const path = join(dir, day)
-                const filePath = join(day, uniqueName)
-                const targetPath = join(path, uniqueName)
-                try {
-                    if (!fs.existsSync(path)) {
-                        fs.mkdirSync(path, { recursive: true });
-                    }
-                    //  写入文件
-                    const stream = fs.createWriteStream(targetPath)
-                    stream.write(file.buffer)
-                    stream.end()
-                    stream.on('finish', async () => {
-                        let md5 = null
-                        if (needMd5) md5 = await this.getFileMd5(file.buffer)
-                        const res = await this.fileRepository.save({
-                            fileName: file.fileName,
-                            contentType: file.contentType,
-                            filePath: filePath,
-                            md5: md5
-                        })
-                        resolve(res)
-                    })
-                    stream.on("error", () => {
-                        this.logger.error("文件存储失败！尝试删除错误文件...")
-                        fs.rm(targetPath, () => {
-                            this.logger.log("错误文件已删除！")
-                        })
-                        throw new BadRequestException("文件上传错误！")
-                    })
-                } catch (e: any) {
-                    this.logger.error("文件存储失败！尝试删除错误文件...")
-                    fs.rm(targetPath, () => {
-                        this.logger.log("错误文件已删除！")
-                    })
-                    throw new BadRequestException("文件上传错误！")
+                const target = join(path, uniqueFileName)
+                //  生成路径
+                if (!fs.existsSync(path)) {
+                    fs.mkdirSync(path, { recursive: true });
                 }
-
+                //  打开文件写入流
+                const stream = fs.createWriteStream(target)
+                //  写入文件
+                if (file.buffer) {
+                    stream.write(file.buffer)
+                } else if (file.stream) {
+                    stream.write(file.stream)
+                } else {
+                    throw new BadRequestException("文件流不存在！")
+                }
+                //  关闭写入流
+                stream.end()
+                stream.on('finish', async () => {
+                    resolve(true)
+                })
+                stream.on("error", () => {
+                    this.logger.error("文件存储失败！")
+                    if (fs.existsSync(target)) {
+                        this.rmdir(target, () => {})
+                    }
+                    reject(false)
+                })
             })
+        } catch (e: any) {
+            this.logger.error("文件存储失败！")
+            throw new BadRequestException("文件存储错误！")
         }
-
-        throw new BadRequestException("文件上传错误！")
     }
 
 
@@ -146,35 +182,95 @@ export class DbService {
     //  ---------- image ----------
     async saveImage(
         image: FileDto,
-        option: SaveImageOption = { md5: false, thumb: false }
-    ) {
-        if (image.buffer) {
-            const imageInfo = sizeOf(image.buffer)
-            const file = await this.saveFile(image, false, option.md5)
-            let thumbFile: File = null
-            if (option.thumb && this.supportThumImage(imageInfo.type)) {
-                const thumImageDto = await this.generateThumImage(image)
-                thumbFile = await this.saveFile(thumImageDto, true, option.md5)
+        option: SaveImageOption
+    ): Promise<ImageDto> {
+        try {
+            const physicalImageInfo = new physicalFileDto(image)
+            const imageSizeInfo = sizeOf(image.buffer)
+            const tmp = []
+            //  存储图片
+            const saveImage = async () => {
+                //  存储图片
+                const success = await this.save(image, physicalImageInfo.dir, physicalImageInfo.uniqueFileName)
+                let md5 = null
+                if (option.md5 == true) {
+                    md5 = await this.getFileMd5(image.buffer)
+                }
+                if (success) {
+                    const res = await this.fileRepository.save({
+                        fileName: image.fileName,
+                        contentType: image.contentType,
+                        filePath: physicalImageInfo.path,
+                        md5: md5
+                    })
+                    return res
+                }
+                return null
             }
-            return this.imageRepository.save({
-                file: file,
-                width: imageInfo.width,
-                height: imageInfo.height,
-                thumbFile: thumbFile
-            })
+
+            const saveThumbImage = async () => {
+                const thumbImage = await this.generateThumImage(image)
+                const success = await this.save(thumbImage, physicalImageInfo.thumbDir, physicalImageInfo.thumbFileName)
+                let md5 = null
+                if (option.md5 == true) {
+                    md5 = await this.getFileMd5(thumbImage.buffer)
+                }
+                if (success) {
+                    const res = await this.fileRepository.save({
+                        fileName: thumbImage.fileName,
+                        contentType: thumbImage.contentType,
+                        filePath: physicalImageInfo.thumbPath,
+                        md5: md5
+                    })
+                    return res
+                }
+                return null
+            }
+
+            tmp.push(saveImage())
+            //  我不理解，为什么不加==，会导致thumb为false的时候也执行
+            if (option.thumb == true) {
+                tmp.push(saveThumbImage())
+            }
+            const res = await Promise.all<File>(tmp)
+            const file_1 = res[0]
+            let file_2 = null
+            if (res.length >= 2) file_2 = res[1]
+            if (file_1 != null) {
+                const res = await this.imageRepository.save({
+                    file: file_1,
+                    width: imageSizeInfo.width,
+                    height: imageSizeInfo.height,
+                    thumbFile: file_2
+                })
+
+                return this.Image2ImageDto(res)
+
+            } else {
+                return null
+            }
+
+        } catch (e: any) {
+            this.logger.error("图片存储失败！")
+            throw new BadRequestException("图片存储失败！")
         }
     }
 
-    private async supportThumImage(type?: string) {
-        if (type == "jpeg" || type == "jpg" || type == "png" || type == "webp") return true
-        return false
+    /**
+     * 分页查询
+     */
+    async getImages() {
+
     }
+
 
     private async generateThumImage(image: FileDto): Promise<FileDto> {
         const fileBuffer = await new Promise<Buffer>((resolve, reject) => {
             gm(image.buffer).resize(160, null).toBuffer((err, buffer) => {
+                if (err) {
+                    throw new BadRequestException("缩略图压缩出错！")
+                }
                 resolve(buffer)
-                if (err) reject(err)
             })
         })
         return {
@@ -186,7 +282,6 @@ export class DbService {
     private randomStr(num: number = 8): string {
         return Math.random().toString(36).slice(-num)
     }
-
 
     private getFileMd5 = (buffer: Buffer): Promise<string> => {
         return new Promise((resolve, reject) => {
@@ -205,5 +300,61 @@ export class DbService {
         });
     }
 
+    private rmdir(dir: string, cb: fs.NoParamCallback) {
+        fs.readdir(dir, function (err, files) {
+            next(0);
+            function next(index) {
+                if (index == files.length)
+                    return fs.rmdir(dir, cb);
+                let newPath = path.join(dir, files[index]);
+                console.log(newPath)
+                fs.stat(newPath, function (err, stat) {
+                    if (err) {
+                        console.log(err);
+                    }
+                    if (stat.isDirectory()) {
+                        this.rmdir(newPath, () => next(index + 1));
+                    } else {
+                        fs.unlink(newPath, function (err) {
+                            if (err) {
+                                console.error(err);
+                            }
+                            next(index + 1);
+                        });
+                    }
+                })
+            }
+        })
+    }
 
+    private pick<T extends Record<string, any>, K extends keyof T>(obj: T, keys: K[]): Pick<T, K> {
+        const result = {} as Pick<T, K>;
+        keys.forEach(key => {
+          if (obj.hasOwnProperty(key)) {
+            result[key] = obj[key];
+          }
+        });
+        return result;
+      }
+
+    private Image2ImageDto(image: Image): ImageDto {
+        const fileDto: FileDto = {
+            fileName: image.file.fileName,
+            contentType: image.file.contentType,
+            filePath: image.file.filePath,
+            md5: image.file.md5
+        }
+        let thumb = null
+        if (image.thumbFile) {
+            thumb = image.thumbFile.filePath
+        }
+
+        return {
+            file: fileDto,
+            thumbPath: thumb,
+            width: image.width,
+            height: image.height
+        }
+    }
+      
 }

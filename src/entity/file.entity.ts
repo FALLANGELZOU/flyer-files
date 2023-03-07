@@ -18,8 +18,9 @@ export class File {
    filePath: string //  文件路径
 
    @CreateDateColumn()
-   createTime : String  //  文件创建时间
+   createTime : string  //  文件创建时间
 
    @UpdateDateColumn()
-   updateTime : String  //  文件变更时间
+   updateTime : string  //  文件变更时间
+   
 }

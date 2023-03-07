@@ -16,8 +16,7 @@ export class User {
    role: ROLE
 
    @CreateDateColumn()
-   createTime : String
-
-   @UpdateDateColumn()
-   updateTime : String
+   createTime : string
+   @UpdateDateColumn() 
+   updateTime : string
 }

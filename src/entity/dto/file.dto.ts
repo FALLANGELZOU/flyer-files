@@ -17,3 +17,14 @@ export interface FileDto {
     originalFileName?: string
 
  }
+
+
+ export const file2FileDto = (file: Express.Multer.File): FileDto => {
+    const tmp = file.originalname.split(".")
+    return {
+        fileName: tmp.slice(0,tmp.length-1).join(""),
+        contentType: tmp.pop() as string,
+        buffer: file.buffer,
+        originalFileName: file.originalname
+    }
+ }

@@ -11,15 +11,17 @@ import { Response } from 'express';
 import { SaveImageOption } from 'src/entity/dto/image.dto';
 import { UserDto } from 'src/entity/dto/user.dto';
 import { AuthService } from 'src/auth/auth.service';
+import { file2FileDto } from 'src/entity/dto/file.dto';
+import { type } from 'os';
 @Controller('api')
 export class ApiController {
 
-    constructor (
+    constructor(
         private readonly httpService: HttpService,
         private readonly apiService: ApiService,
         private readonly authService: AuthService,
         private readonly dbService: DbService
-        ) {
+    ) {
 
     }
 
@@ -31,24 +33,24 @@ export class ApiController {
         }
     }
 
-    /**
-     * 
-     * @param file 上传的文件
-     * @param params 参数
-     * @returns 
-     */
-    @UseGuards(JwtGuard)
-    @Post("/upload")
-    @UseInterceptors(FileInterceptor('file'))
-    async upload(@UploadedFile() file: Express.Multer.File, @Query() params) {
-        const n = file.originalname.split(".")
-        return this.dbService.saveFile({
-            fileName: n.slice(0,n.length-1).join(""),
-            contentType: n.pop() as string,
-            buffer: file.buffer,
-            originalFileName: file.originalname
-        })
-    }
+    // /**
+    //  * 
+    //  * @param file 上传的文件
+    //  * @param params 参数
+    //  * @returns 
+    //  */
+    // @UseGuards(JwtGuard)
+    // @Post("/upload")
+    // @UseInterceptors(FileInterceptor('file'))
+    // async upload(@UploadedFile() file: Express.Multer.File, @Query() params) {
+    //     const n = file.originalname.split(".")
+    //     return this.dbService.saveFile({
+    //         fileName: n.slice(0,n.length-1).join(""),
+    //         contentType: n.pop() as string,
+    //         buffer: file.buffer,
+    //         originalFileName: file.originalname
+    //     })
+    // }
 
 
     /**
@@ -58,7 +60,7 @@ export class ApiController {
      */
     @Get("/file/:year/:month/:day/:name")
     async getFile(@Param() params, @Res() res: Response) {
-        const {year, month, day, name} = params
+        const { year, month, day, name } = params
         const path = [year, month, day, name].join("/")
         const file = await this.dbService.getFile(path)
         file.stream.pipe(res)
@@ -74,13 +76,14 @@ export class ApiController {
     @UseGuards(JwtGuard)
     @Post("/image/upload")
     @UseInterceptors(FileInterceptor('file'))
-    async imageUpload(@UploadedFile() file: Express.Multer.File, @Query() params: SaveImageOption) {
-        const n = file.originalname.split(".")
-        return this.dbService.saveImage({
-            fileName: n.slice(0,n.length-1).join(""),
-            contentType: n.pop() as string,
-            buffer: file.buffer,
-            originalFileName: file.originalname
-        }, params)
+    async imageUpload(
+        @UploadedFile() file: Express.Multer.File,
+        @Query("md5") md5: boolean = true,
+        @Query("thumb") thumb: boolean = true
+    ) {
+        return this.dbService.saveImage(file2FileDto(file), {
+            md5,
+            thumb
+        })
     }
 }
