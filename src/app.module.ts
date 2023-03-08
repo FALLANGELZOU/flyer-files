@@ -11,9 +11,9 @@ import { DbModule } from './db/db.module';
     ApiModule,
     TypeOrmModule.forRoot({
       type: 'sqlite',
-      database: 'db.sqlite',
+      database: './resource/db.sqlite',
       autoLoadEntities: true,
-      synchronize: true,
+      synchronize: true
     })
   ],
   controllers: [AppController],
