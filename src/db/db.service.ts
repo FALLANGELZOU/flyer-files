@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import path, { join } from 'path';
 import { User } from 'src/entity/user.entity';
 import { Stream } from 'stream';
-import { Repository } from 'typeorm';
+import { Connection, DataSource, getManager, Repository } from 'typeorm';
 import * as moment from 'moment'
 import { FileDto } from 'src/entity/dto/file.dto';
 import * as fs from "fs";
@@ -84,7 +84,8 @@ export class DbService {
     constructor(
         @InjectRepository(User) private userRepository: Repository<User>,
         @InjectRepository(File) private fileRepository: Repository<File>,
-        @InjectRepository(Image) private imageRepository: Repository<Image>
+        @InjectRepository(Image) private imageRepository: Repository<Image>,
+        private readonly datasource: DataSource
     ) {
         if (!fs.existsSync(this.BASIC_DIR)) {
             fs.mkdirSync(this.BASIC_DIR, { recursive: true })
@@ -112,6 +113,22 @@ export class DbService {
             password,
             role
         })
+    }
+
+    
+    async changePassword(username: string, password: string) {
+        const res = await this.datasource.transaction(async (manager) => {
+            const user = await manager.findOneBy(User, {
+                username: username
+            })
+            if (!user) throw new BadRequestException("未找到用户！")
+            const res = await manager.update(User, user.id, {...user, password})
+            if (res) return "更新成功！"
+            return "更新失败！"
+        })
+
+        return res
+        
     }
 
     //  ---------- File ----------
@@ -283,6 +300,10 @@ export class DbService {
             relations: ["file", "thumbFile"]
         })
         return res.map(item => this.Image2ImageDto(item))
+    }
+
+    async getImageCount() {
+        return this.imageRepository.count()
     }
 
 

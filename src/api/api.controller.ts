@@ -14,6 +14,7 @@ import { AuthService } from 'src/auth/auth.service';
 import { file2FileDto } from 'src/entity/dto/file.dto';
 import { type } from 'os';
 import { BoolUtil } from 'src/utils/commonUtil';
+import { Request } from 'express'
 @Controller('api')
 export class ApiController {
 
@@ -26,46 +27,29 @@ export class ApiController {
 
     }
 
+    /**
+     * 登陆
+     * @param param 用户名密码
+     * @returns token
+     */
     @UseGuards(AuthGuard('local'))
     @Post("/login")
-    async login(@Req() param: UserDto) {
+    async login(@Req() param: any) {
         return {
-            token: this.authService.genJwt(param as any)
+            token: this.authService.genJwt(param.user)
         }
     }
-
-    // /**
-    //  * 
-    //  * @param file 上传的文件
-    //  * @param params 参数
-    //  * @returns 
-    //  */
-    // @UseGuards(JwtGuard)
-    // @Post("/upload")
-    // @UseInterceptors(FileInterceptor('file'))
-    // async upload(@UploadedFile() file: Express.Multer.File, @Query() params) {
-    //     const n = file.originalname.split(".")
-    //     return this.dbService.saveFile({
-    //         fileName: n.slice(0,n.length-1).join(""),
-    //         contentType: n.pop() as string,
-    //         buffer: file.buffer,
-    //         originalFileName: file.originalname
-    //     })
-    // }
-
-
+    
     /**
-     * 获取文件
-     * @param params 文件路径
-     * @param res 文件流
+     * 修改密码
+     * @param param 新密码
+     * @returns 
      */
-    @Get("/file/:year/:month/:day/:name")
     @UseGuards(JwtGuard)
-    async getFile(@Param() params, @Res() res: Response) {
-        const { year, month, day, name } = params
-        const path = [year, month, day, name].join("/")
-        const file = await this.dbService.getFile(path)
-        file.stream.pipe(res)
+    @Post("/user/modify/password")
+    async changePassword(@Body() param: { password: string }, @Req() request) {
+        if (!param.password) return "更新密码不存在！"
+        return this.dbService.changePassword(request.user.username, param.password)
     }
 
 
@@ -92,6 +76,11 @@ export class ApiController {
         })
     }
 
+    /**
+     * 获取图片流
+     * @param params 图片路径
+     * @param res 图片流
+     */
     @Get("/images/:type/:year/:month/:day/:name")
     async getImage(@Param() params, @Res() res: Response) {
         const { type, year, month, day, name } = params
@@ -100,10 +89,22 @@ export class ApiController {
         stream.pipe(res)
     }
 
+    /**
+     * 
+     * @param param 分页查询参数
+     * @returns 图片信息
+     */
     @Post("/image/list")
     async getImageList(@Body() param: PageQueryDto) {
-        console.log(param);
-        
         return this.dbService.getImages(param)
+    }
+
+    /**
+     * 
+     * @returns 图片数目
+     */
+    @Get("/image/count")
+    async getImageCount() {
+        return this.dbService.getImageCount()
     }
 }
