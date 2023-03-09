@@ -1,5 +1,5 @@
 import { HttpService } from '@nestjs/axios';
-import { Body, Controller, Dependencies, Get, Param, Post, Query, Req, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Dependencies, Get, Param, Post, Query, Req, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import axios, { AxiosResponse } from 'axios';
 import { map } from 'rxjs';
 import { ApiService } from './api.service';
@@ -15,6 +15,7 @@ import { file2FileDto } from 'src/entity/dto/file.dto';
 import { type } from 'os';
 import { BoolUtil } from 'src/utils/commonUtils';
 import { Request } from 'express'
+import { AlbumDto } from 'src/entity/dto/album.dto';
 @Controller('api')
 export class ApiController {
 
@@ -115,14 +116,63 @@ export class ApiController {
     @Post("image/fetch")
     @UseGuards(JwtGuard)
     async fetchImages(@Body() param: ImageFromOtherOption) {
-        if (param.type && !validateType(param.type)) return "类型不符合！"
-        if (param.num && (typeof param.num) != 'number') return "数量不正确！" 
+        if (param.type && !validateType(param.type)) throw new BadRequestException("类型不符合！")
+        if (param.num && (typeof param.num) != 'number') throw new BadRequestException("数量不正确！") 
         return this.dbService.fetchImagesFromOther(param)
     }
 
 
+    /**
+     * 随机给第三方图库中的图
+     * @param param 请求参数
+     * @returns 
+     */
     @Post("image/random")
     async getThirdPartyImageRandom(@Body() param: ImageFromOtherOption) {
         return this.dbService.getRandomThirdPartyImage(param.num?param.num:20, param.type)
     }
+
+    @Post("image/add-album")
+    async addImageToAlbum(@Body() param: { imageId: number, albumId: number }) {
+        if (!param.albumId) throw new BadRequestException("相册id不能为空")
+        if (!param.imageId) throw new BadRequestException("图片id不能为空")
+        return this.dbService.addImageToAlbum(param.imageId, param.albumId)
+    }
+
+    @Post("image/remove-album")
+    async removeImageFromAlbum(@Body() param: { imageId: number, albumId: number }) {
+        if (!param.albumId) throw new BadRequestException("相册id不能为空")
+        if (!param.imageId) throw new BadRequestException("图片id不能为空")
+        return this.dbService.removeImageFromAlbum(param.imageId, param.albumId)
+    }
+
+
+    @Post("album/add")
+    async addAlbum(@Body() param: AlbumDto) {
+        if (!param.name) throw new BadRequestException("相册名称不能为空！")
+        return this.dbService.addAlbum(param)
+    }
+
+    @Post("album/delete")
+    async deleteAlbum(@Body() param: AlbumDto) {
+        if (!param.id) throw new BadRequestException("相册id不能为空！")
+        return this.dbService.deleteAlbum(param.id)
+    }
+
+    @Get("album/list")
+    async getAlbumList() {
+        return this.dbService.getAlbumList()
+    }
+
+    @Post("album/modify")
+    async modifyAlbum(@Body() param: AlbumDto) {
+        if (!param.id) throw new BadRequestException("无相册id")
+        return this.dbService.modifyAlbum(param)
+    }
+
+    
+
+  
+
+
 }

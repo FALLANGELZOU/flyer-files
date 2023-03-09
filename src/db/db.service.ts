@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import path, { join } from 'path';
 import { User } from 'src/entity/user.entity';
 import { Stream } from 'stream';
-import { Connection, DataSource, getManager, Repository } from 'typeorm';
+import { Connection, DataSource, EntityManager, getManager, Repository } from 'typeorm';
 import * as moment from 'moment'
 import { FileDto } from 'src/entity/dto/file.dto';
 import * as fs from "fs";
@@ -17,6 +17,8 @@ import * as gm from 'gm'
 import { ImageDto, ImageFromOtherOption, SaveImageOption } from 'src/entity/dto/image.dto';
 import { ROLE } from 'src/entity/role.entity';
 import { getImageFromOther } from 'src/utils/imageUtils';
+import { AlbumDto } from 'src/entity/dto/album.dto';
+import { Album } from 'src/entity/album.entity';
 
 /**
  * 物理文件描述
@@ -51,7 +53,7 @@ class physicalFileDto {
         this.originalName = file.fileName;
         this.dayDir = moment().format('yyyy/MM/DD')
 
-        this.uniqueFileName = `${file.fileName}_${this.randomStr()}.${file.contentType}`
+        this.uniqueFileName = `${this.randomStr(24)}.${file.contentType}`
         this.path = join("upload", this.dayDir, this.uniqueFileName)
         this.phyiscalPath = join(this.BASIC_DIR, this.path)
         this.dir = join(this.BASIC_DIR, "upload", this.dayDir)
@@ -86,11 +88,15 @@ export class DbService {
         @InjectRepository(User) private userRepository: Repository<User>,
         @InjectRepository(File) private fileRepository: Repository<File>,
         @InjectRepository(Image) private imageRepository: Repository<Image>,
+        @InjectRepository(Album) private albumRepository: Repository<Album>,
         private readonly datasource: DataSource
     ) {
         if (!fs.existsSync(this.BASIC_DIR)) {
             fs.mkdirSync(this.BASIC_DIR, { recursive: true })
         }
+
+        this.initAlbum()
+
     }
 
     //  ---------- User ----------
@@ -304,19 +310,19 @@ export class DbService {
         const query = this.imageRepository.createQueryBuilder("image")
 
         if (option.thirdParty) {
-            query.where("image.thirdParty = :v1", {v1: true})
-            if (option.thirdPartyType != "all") query.where("image.thirdPartyType = :v2", {v2: option.thirdPartyType})
+            query.where("image.thirdParty = :v1", { v1: true })
+            if (option.thirdPartyType != "all") query.where("image.thirdPartyType = :v2", { v2: option.thirdPartyType })
         } else {
-            query.where("image.thirdParty = :v1", {v1: false})
+            query.where("image.thirdParty = :v1", { v1: false })
             query.orWhere("image.thirdParty is NULL")
         }
 
         const res = await query.orderBy("image.createTime", orderType)
-        .skip(option.pageSize * option.pageIndex)
-        .take(option.pageSize)
-        .leftJoinAndSelect("image.file", "file")
-        .leftJoinAndSelect("image.thumbFile", "thumbFile")
-        .getMany()
+            .skip(option.pageSize * option.pageIndex)
+            .take(option.pageSize)
+            .leftJoinAndSelect("image.file", "file")
+            .leftJoinAndSelect("image.thumbFile", "thumbFile")
+            .getMany()
 
         return res.map(item => this.Image2ImageDto(item))
         // const res = await this.imageRepository.find({
@@ -368,15 +374,115 @@ export class DbService {
             .orderBy("RANDOM()")
             .limit(num)
             .getMany()
-        
+
         const res: ImageDto[] = []
-        for(const image of images) {
+        for (const image of images) {
             res.push(this.Image2ImageDto(image))
         }
         return res
-        
+
     }
 
+
+    //  ---------- Album ----------
+
+    async addAlbum(album: AlbumDto): Promise<AlbumDto> {
+        const res = await this.albumRepository.save({
+            name: album.name,
+            desc: album.desc
+        })
+
+        return {
+            id: res.id,
+            name: res.name,
+            desc: res.desc
+        }
+    }
+
+    async existAlbum(name: string) {
+        return (await this.albumRepository.count({
+            where: {
+                name
+            }
+        })) != 0
+    }
+
+    async deleteAlbum(id: number) {
+        const res = await this.albumRepository.delete(id)
+        if (res.affected) return true
+        return false
+    }
+
+    async getAlbum(id: number) {
+        return this.albumRepository.findOne({ where: { id } })
+    }
+
+    async addImageToAlbum(imageId: number, albumId: number) {
+        const res = await this.datasource.transaction(async (manager) => {
+            const exist = await this.existImageAndAlbum(manager, imageId, albumId)
+            if (exist) throw new BadRequestException("图片已在相册内！")
+            await manager.createQueryBuilder(Image, "image")
+                .relation(Image, "albums")
+                .of(imageId)
+                .add(albumId)
+            return true
+        })
+        return res
+    }
+
+    async removeImageFromAlbum(imageId: number, albumId: number) {
+        const res = await this.datasource.transaction(async (manager) => {
+            const exist = await this.existImageAndAlbum(manager, imageId, albumId)
+            if (!exist) throw new BadRequestException("图片不在相册内！")
+            await manager.createQueryBuilder(Image, "image")
+                .relation(Image, "albums")
+                .of(imageId)
+                .remove(albumId)
+            return true
+        })
+        return res
+    }
+
+    async getAlbumList(): Promise<AlbumDto[]> {
+        const res = await this.albumRepository.find()
+        return res.map(item => ({
+            id: item.id,
+            name: item.name,
+            desc: item.desc
+        }))
+    }
+
+    async modifyAlbum(param: AlbumDto) {
+        return this.transaction(async (manager) => {
+            const album = await manager.findOneBy(Album, { id: param.id })
+            if (album) {
+                if (param.name && param.name != album.name) {
+                    const count = await manager.countBy(Album, {name: param.name})
+                    if (count > 0) {
+                        throw new BadRequestException("同名相册已存在！")
+                    }
+                }
+                const res = await manager.update(Album, param.id, {
+                    name: param.name ? param.name : album.name,
+                    desc: param.desc ? param.desc : album.desc
+                })
+                if (res.affected > 0) {
+                    return true
+                }
+                return false
+            } else {
+                throw new BadRequestException("相册不存在！")
+            }
+        })
+    }
+
+    private async existImageAndAlbum(manager: EntityManager, imageId: number, albumId: number) {
+        return (await manager.createQueryBuilder(Image, 'image')
+            .leftJoinAndSelect('image.albums', 'album')
+            .where('image.id = :imageId', { imageId: imageId })
+            .andWhere('album.id = :albumId', { albumId: albumId })
+            .getCount()) != 0
+    }
 
     private async generateThumImage(image: FileDto): Promise<FileDto> {
         const fileBuffer = await new Promise<Buffer>((resolve, reject) => {
@@ -471,6 +577,23 @@ export class DbService {
             thirdParty: image.thirdParty,
             thirdPartyType: image.thirdPartyType,
             createTime: image.createTime
+        }
+    }
+
+    private transaction<T>(fn: (manger: EntityManager) => Promise<T>): Promise<T> {
+        return this.datasource.transaction(async (manager) => {
+            return fn(manager)
+        })
+
+   
+    }
+
+    private async initAlbum() {
+        if (!(await this.existAlbum("default"))) {
+            this.addAlbum({
+                name: "default",
+                desc: "默认相册"
+            })
         }
     }
 

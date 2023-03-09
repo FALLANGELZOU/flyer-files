@@ -1,4 +1,5 @@
-import { Column, CreateDateColumn, Entity, JoinColumn, OneToOne, PrimaryGeneratedColumn, UpdateDateColumn } from "typeorm"
+import { Column, CreateDateColumn, Entity, JoinColumn, JoinTable, ManyToMany, OneToMany, OneToOne, PrimaryGeneratedColumn, UpdateDateColumn } from "typeorm"
+import { Album } from "./album.entity"
 import { File } from "./file.entity"
 
 @Entity()
@@ -25,9 +26,14 @@ export class Image {
 
     @Column({ nullable: true })
     thirdPartyType: "pc" | "top" | "random" | "mp"; //  第三方图片类型
-    
+
+    @ManyToMany(() => Album, album => album.images)
+    @JoinTable()
+    albums: Album[];
+
     @CreateDateColumn()
     createTime: Date  //  文件创建时间
+
 
     @UpdateDateColumn()
     updateTime: Date  //  文件变更时间
