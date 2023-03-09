@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './settings/HttpExceptionFilter';
 import { HttpInterceptor } from './settings/HttpInterceptor';
+import { getImageFromOther } from './utils/imageUtils';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);

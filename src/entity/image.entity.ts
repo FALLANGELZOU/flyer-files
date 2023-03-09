@@ -19,6 +19,12 @@ export class Image {
 
     @Column()
     height: number; //  原图高
+
+    @Column({ nullable: true} )
+    thirdParty: boolean;    //  是否是第三方图片
+
+    @Column({ nullable: true })
+    thirdPartyType: "pc" | "top" | "random" | "mp"; //  第三方图片类型
     
     @CreateDateColumn()
     createTime: Date  //  文件创建时间

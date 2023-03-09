@@ -9,13 +9,14 @@ import { FileDto } from 'src/entity/dto/file.dto';
 import * as fs from "fs";
 import { File } from 'src/entity/file.entity';
 import { createHash } from 'crypto'
-import { buffer2Stream } from 'src/utils/commonUtil';
+import { buffer2Stream } from 'src/utils/commonUtils';
 import { Exception } from 'sass';
 import sizeOf from "image-size"
 import { Image } from 'src/entity/image.entity';
 import * as gm from 'gm'
-import { ImageDto, SaveImageOption } from 'src/entity/dto/image.dto';
+import { ImageDto, ImageFromOtherOption, SaveImageOption } from 'src/entity/dto/image.dto';
 import { ROLE } from 'src/entity/role.entity';
+import { getImageFromOther } from 'src/utils/imageUtils';
 
 /**
  * 物理文件描述
@@ -115,20 +116,20 @@ export class DbService {
         })
     }
 
-    
+
     async changePassword(username: string, password: string) {
         const res = await this.datasource.transaction(async (manager) => {
             const user = await manager.findOneBy(User, {
                 username: username
             })
             if (!user) throw new BadRequestException("未找到用户！")
-            const res = await manager.update(User, user.id, {...user, password})
+            const res = await manager.update(User, user.id, { ...user, password })
             if (res) return "更新成功！"
             return "更新失败！"
         })
 
         return res
-        
+
     }
 
     //  ---------- File ----------
@@ -164,7 +165,7 @@ export class DbService {
                 stream.on("error", () => {
                     this.logger.error("文件存储失败！")
                     if (fs.existsSync(target)) {
-                        this.rmdir(target, () => {})
+                        this.rmdir(target, () => { })
                     }
                     reject(false)
                 })
@@ -257,7 +258,9 @@ export class DbService {
                     file: file_1,
                     width: imageSizeInfo.width,
                     height: imageSizeInfo.height,
-                    thumbFile: file_2
+                    thumbFile: file_2,
+                    thirdParty: option.thirdParty ? option.thirdParty : false,
+                    thirdPartyType: option.thirdPartyType
                 })
 
                 return this.Image2ImageDto(res)
@@ -272,12 +275,17 @@ export class DbService {
         }
     }
 
+    /**
+     * 获取文件流
+     * @param path 文件存储路径
+     * @returns 
+     */
     async getImageStream(path: string) {
         const file = await this.fileRepository.findOneBy({ filePath: path })
 
         if (!file) throw new BadRequestException("文件不存在！")
         return fs.createReadStream(join(this.BASIC_DIR, path))
-        
+
     }
 
     /**
@@ -288,22 +296,85 @@ export class DbService {
         option.pageSize = option.pageSize ? option.pageSize : 20
         option.reverse = option.reverse ? option.reverse : false
         option.sortBy = option.sortBy ? option.sortBy : "createTime"
-        let orderType: "ASC" | "DESC" = "ASC"
-        if (option.reverse) orderType = "DESC"
+        option.thirdParty = option.thirdParty ? option.thirdParty : false
+        option.thirdPartyType = option.thirdPartyType ? option.thirdPartyType : "all"
 
-        const res = await this.imageRepository.find({
-            order: {
-                createTime: orderType
-            },
-            skip: option.pageSize * option.pageIndex,
-            take: option.pageSize,
-            relations: ["file", "thumbFile"]
-        })
+        let orderType: "ASC" | "DESC" = "DESC"
+        if (option.reverse) orderType = "ASC"
+        const query = this.imageRepository.createQueryBuilder("image")
+
+        if (option.thirdParty) {
+            query.where("image.thirdParty = :v1", {v1: true})
+            if (option.thirdPartyType != "all") query.where("image.thirdPartyType = :v2", {v2: option.thirdPartyType})
+        } else {
+            query.where("image.thirdParty = :v1", {v1: false})
+            query.orWhere("image.thirdParty is NULL")
+        }
+
+        const res = await query.orderBy("image.createTime", orderType)
+        .skip(option.pageSize * option.pageIndex)
+        .take(option.pageSize)
+        .leftJoinAndSelect("image.file", "file")
+        .leftJoinAndSelect("image.thumbFile", "thumbFile")
+        .getMany()
+
         return res.map(item => this.Image2ImageDto(item))
+        // const res = await this.imageRepository.find({
+        //     order: {
+        //         createTime: orderType
+        //     },
+        //     skip: option.pageSize * option.pageIndex,
+        //     take: option.pageSize,
+        //     relations: ["file", "thumbFile"]
+        // })
+        // return res.map(item => this.Image2ImageDto(item))
     }
 
+    /**
+     * 
+     * @returns 图片总数
+     */
     async getImageCount() {
         return this.imageRepository.count()
+    }
+
+    /**
+     * 拉取第三方图库的图片
+     */
+    async fetchImagesFromOther(param: ImageFromOtherOption): Promise<ImageDto[]> {
+        if (!param.num) param.num = 20
+        if (!param.type) param.type = "top"
+        const fileDtos = await getImageFromOther(param.num, param.type)
+        const res = []
+        for (const fileDto of fileDtos) {
+            const imageDto = await this.saveImage(fileDto, {
+                md5: true,
+                thumb: true,
+                thirdParty: true,
+                thirdPartyType: param.type
+            })
+            res.push(imageDto)
+        }
+        return res
+    }
+
+
+    async getRandomThirdPartyImage(num: number, type?: string): Promise<ImageDto[]> {
+        const query = this.imageRepository.createQueryBuilder("image")
+            .where("image.thirdParty = :value", { value: true })
+        if (type) query.where("image.thirdPartyType = :value", { value: type })
+        const images = await query.leftJoinAndSelect("image.file", "file")
+            .leftJoinAndSelect("image.thumbFile", "thumbFile")
+            .orderBy("RANDOM()")
+            .limit(num)
+            .getMany()
+        
+        const res: ImageDto[] = []
+        for(const image of images) {
+            res.push(this.Image2ImageDto(image))
+        }
+        return res
+        
     }
 
 
@@ -373,12 +444,12 @@ export class DbService {
     private pick<T extends Record<string, any>, K extends keyof T>(obj: T, keys: K[]): Pick<T, K> {
         const result = {} as Pick<T, K>;
         keys.forEach(key => {
-          if (obj.hasOwnProperty(key)) {
-            result[key] = obj[key];
-          }
+            if (obj.hasOwnProperty(key)) {
+                result[key] = obj[key];
+            }
         });
         return result;
-      }
+    }
 
     private Image2ImageDto(image: Image): ImageDto {
         const fileDto: FileDto = {
@@ -397,8 +468,10 @@ export class DbService {
             thumbPath: thumb,
             width: image.width,
             height: image.height,
+            thirdParty: image.thirdParty,
+            thirdPartyType: image.thirdPartyType,
             createTime: image.createTime
         }
     }
-      
+
 }

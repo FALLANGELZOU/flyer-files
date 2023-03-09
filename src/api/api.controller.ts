@@ -8,12 +8,12 @@ import { JwtGuard } from 'src/auth/JwtGuard';
 import { DbService } from 'src/db/db.service';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
-import { SaveImageOption } from 'src/entity/dto/image.dto';
+import { ImageFromOtherOption, SaveImageOption, validateType } from 'src/entity/dto/image.dto';
 import { UserDto } from 'src/entity/dto/user.dto';
 import { AuthService } from 'src/auth/auth.service';
 import { file2FileDto } from 'src/entity/dto/file.dto';
 import { type } from 'os';
-import { BoolUtil } from 'src/utils/commonUtil';
+import { BoolUtil } from 'src/utils/commonUtils';
 import { Request } from 'express'
 @Controller('api')
 export class ApiController {
@@ -106,5 +106,23 @@ export class ApiController {
     @Get("/image/count")
     async getImageCount() {
         return this.dbService.getImageCount()
+    }
+
+
+    /**
+     * 拉取第三方图片
+     */
+    @Post("image/fetch")
+    @UseGuards(JwtGuard)
+    async fetchImages(@Body() param: ImageFromOtherOption) {
+        if (param.type && !validateType(param.type)) return "类型不符合！"
+        if (param.num && (typeof param.num) != 'number') return "数量不正确！" 
+        return this.dbService.fetchImagesFromOther(param)
+    }
+
+
+    @Post("image/random")
+    async getThirdPartyImageRandom(@Body() param: ImageFromOtherOption) {
+        return this.dbService.getRandomThirdPartyImage(param.num?param.num:20, param.type)
     }
 }

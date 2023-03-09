@@ -2,5 +2,7 @@ interface PageQueryDto {
     pageSize?: number,
     pageIndex?: number,
     reverse?: boolean,
-    sortBy?: string
+    sortBy?: string,
+    thirdParty?: boolean,
+    thirdPartyType?: string
 }
