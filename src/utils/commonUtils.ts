@@ -40,3 +40,50 @@ export const BoolUtil = {
     }
 }
 
+
+export class ObjectUtils{
+    getDataType(data) {
+      const temp = Object.prototype.toString.call(data);
+      const type = temp.match(/\b\w+\b/g);
+      return (type.length < 2) ? 'Undefined' : type[1];
+    }
+    iterable(data){
+      return ['Object', 'Array'].includes(this.getDataType(data));
+    }
+    isObjectChangedSimple(source, comparison){
+      const _source = JSON.stringify(source)
+      const _comparison = JSON.stringify({...source,...comparison})
+      return _source !== _comparison
+    }
+    isObjectChanged(source, comparison) {
+      if (!this.iterable(source)) {
+        throw new Error(`source should be a Object or Array , but got ${this.getDataType(source)}`);
+      }
+      if (this.getDataType(source) !== this.getDataType(comparison)) {
+        console.log("data type不同");
+        
+        return true;
+      }
+      const sourceKeys = Object.keys(source);
+      const comparisonKeys = Object.keys({...source, ...comparison});
+      if (sourceKeys.length !== comparisonKeys.length) {
+        console.log("data length不同");
+        
+        return true;
+      }
+      return comparisonKeys.some(key => {
+        if (this.iterable(source[key])) {
+          return this.isObjectChanged(source[key], comparison[key]);
+        } else {
+          if (source[key] !== comparison[key]) {
+            console.log("对比");
+            console.log("key: ", key);
+            console.log(source[key],comparison[key]);
+            console.log("---------------------");
+            
+          }
+          return source[key] !== comparison[key];
+        }
+      });
+    }
+  }

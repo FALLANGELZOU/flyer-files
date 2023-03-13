@@ -100,6 +100,7 @@ export class ApiController {
         return this.dbService.getImages(param)
     }
 
+
     /**
      * 
      * @returns 图片数目
@@ -159,18 +160,23 @@ export class ApiController {
         return this.dbService.deleteAlbum(param.id)
     }
 
+    
     @Get("album/list")
+    @UseGuards(JwtGuard)
     async getAlbumList() {
         return this.dbService.getAlbumList()
     }
 
     @Post("album/modify")
     async modifyAlbum(@Body() param: AlbumDto) {
+        console.log(param);
+        
+
         if (!param.id) throw new BadRequestException("无相册id")
         return this.dbService.modifyAlbum(param)
     }
 
-    
+
 
   
 
