@@ -14,6 +14,7 @@ export class JwtGuard extends AuthGuard('jwt') {
 
   handleRequest(err, user, info) {
     // 可以抛出一个基于info或者err参数的异常
+    
     if (err || !user) {
       throw err || new UnauthorizedException();
     }

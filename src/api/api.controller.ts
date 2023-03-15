@@ -35,7 +35,7 @@ export class ApiController {
      */
     @UseGuards(AuthGuard('local'))
     @Post("/login")
-    async login(@Req() param: any) {
+    async login(@Req() param: any) {     
         return {
             token: this.authService.genJwt(param.user)
         }
@@ -160,7 +160,7 @@ export class ApiController {
         return this.dbService.deleteAlbum(param.id)
     }
 
-    
+
     @Get("album/list")
     @UseGuards(JwtGuard)
     async getAlbumList() {
